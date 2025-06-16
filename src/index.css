@@ -1,3 +1,41 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Base responsive styling */
+html {
+  overflow-x: hidden;
+}
+
+body {
+  @apply text-gray-900 bg-gray-50;
+  font-size: 16px;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Responsive typography adjustments */
+@media (max-width: 640px) {
+  body {
+    font-size: 14px;
+  }
+}
+
+/* Fix for mobile input zooming */
+@media (max-width: 480px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Improved touch targets for mobile */
+@media (max-width: 480px) {
+  button, 
+  [role="button"],
+  a.btn, 
+  input[type="submit"],
+  input[type="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

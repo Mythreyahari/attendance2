@@ -67,7 +67,7 @@ export function AttendanceForm({ onLogout, userEmail }: AttendanceFormProps) {
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 gap-4 sm:gap-0">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
                 <School className="h-6 w-6 text-blue-600" />
@@ -88,33 +88,70 @@ export function AttendanceForm({ onLogout, userEmail }: AttendanceFormProps) {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8">
+          {/* Mobile Stats Display (visible only on mobile) */}
+          <div className="lg:hidden">
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+                <div className="flex flex-col items-center">
+                  <div className="flex items-center gap-1 mb-1">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <span className="text-xs font-medium text-green-700">Present</span>
+                  </div>
+                  <span className="text-xl font-bold text-green-600">{todaysStats.present}</span>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+                <div className="flex flex-col items-center">
+                  <div className="flex items-center gap-1 mb-1">
+                    <XCircle className="h-4 w-4 text-red-600" />
+                    <span className="text-xs font-medium text-red-700">Absent</span>
+                  </div>
+                  <span className="text-xl font-bold text-red-600">{todaysStats.absent}</span>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+                <div className="flex flex-col items-center">
+                  <div className="flex items-center gap-1 mb-1">
+                    <Users className="h-4 w-4 text-blue-600" />
+                    <span className="text-xs font-medium text-blue-700">Students</span>
+                  </div>
+                  <span className="text-xl font-bold text-blue-600">{studentsCount}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Main Content */}
           <div className="lg:col-span-3">
             {/* Tab Navigation */}
             <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg mb-6">
               <button
                 onClick={() => setActiveTab('attendance')}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${
                   activeTab === 'attendance'
                     ? 'bg-white text-blue-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
                 <Calendar className="h-4 w-4" />
-                Daily Attendance
+                <span className="hidden xs:inline">Daily Attendance</span>
+                <span className="xs:hidden">Attendance</span>
               </button>
               <button
                 onClick={() => setActiveTab('students')}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${
                   activeTab === 'students'
                     ? 'bg-white text-blue-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
                 <Users className="h-4 w-4" />
-                Manage Students
+                <span className="hidden xs:inline">Manage Students</span>
+                <span className="xs:hidden">Students</span>
               </button>
             </div>
 
@@ -126,8 +163,8 @@ export function AttendanceForm({ onLogout, userEmail }: AttendanceFormProps) {
             )}
           </div>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
+          {/* Sidebar - Hidden on mobile, visible on desktop */}
+          <div className="hidden lg:block space-y-6">
             {/* Today's Summary */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="flex items-center gap-3 mb-4">
