@@ -7,6 +7,7 @@ interface Student {
   id: string;
   name: string;
   class: string;
+  created_at: string;
 }
 
 interface AttendanceRecord {
@@ -43,7 +44,7 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
         .from('students')
         .select('*')
         .order('class', { ascending: true })
-        .order('name', { ascending: true });
+        .order('created_at', { ascending: true });
 
       if (error) throw error;
       setStudents(data || []);
@@ -165,6 +166,14 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
     return acc;
   }, {} as Record<string, Student[]>);
 
+  // Sort students alphabetically within each class
+  Object.keys(groupedStudents).forEach(className => {
+    groupedStudents[className].sort((a, b) => {
+      // Sort by creation date (oldest to newest)
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+  });
+
   const hasChanges = JSON.stringify(attendance) !== JSON.stringify(existingAttendance);
   const presentCount = Object.values(attendance).filter(status => status === 'present').length;
   const absentCount = Object.values(attendance).filter(status => status === 'absent').length;
@@ -271,7 +280,7 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
                     <div className="h-2 w-2 bg-blue-600 rounded-full"></div>
                     {className} ({classStudents.length} students)
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3">
                     {classStudents.map((student) => (
                       <div key={student.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <span className="font-medium text-gray-900">{student.name}</span>

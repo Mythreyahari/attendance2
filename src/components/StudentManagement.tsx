@@ -30,7 +30,7 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
         .from('students')
         .select('*')
         .order('class', { ascending: true })
-        .order('name', { ascending: true });
+        .order('created_at', { ascending: true });
 
       if (error) throw error;
       setStudents(data || []);
@@ -128,6 +128,14 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
     return acc;
   }, {} as Record<string, Student[]>);
 
+  // Sort students by creation date within each class
+  Object.keys(groupedStudents).forEach(className => {
+    groupedStudents[className].sort((a, b) => {
+      // Sort by creation date (oldest to newest)
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+  });
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-6">
@@ -208,7 +216,7 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
                 <div className="h-2 w-2 bg-blue-600 rounded-full"></div>
                 {className} ({classStudents.length} students)
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 {classStudents.map((student) => (
                   <div key={student.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     {editingStudent?.id === student.id ? (
