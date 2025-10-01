@@ -4,14 +4,17 @@ import { supabase } from '../lib/supabase';
 import { AttendanceViewer } from './AttendanceViewer';
 
 interface Student {
-  id: string;
+  register_number: string;
   name: string;
   class: string;
   created_at: string;
+  roll_number: string;
+  department: string;
+  shift: number;
 }
 
 interface AttendanceRecord {
-  student_id: string;
+  student_register_number: string;
   status: 'present' | 'absent';
 }
 
@@ -61,16 +64,16 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
     try {
       const { data, error } = await supabase
         .from('attendance')
-        .select('student_id, status')
+        .select('student_register_number, status')
         .eq('date', selectedDate)
-        .in('student_id', students.map(s => s.id));
+        .in('student_register_number', students.map(s => s.register_number));
 
       if (error) throw error;
 
       const existingRecords: Record<string, 'present' | 'absent'> = {};
       data?.forEach(record => {
-        if (record.student_id) {
-          existingRecords[record.student_id] = record.status;
+        if (record.student_register_number) {
+          existingRecords[record.student_register_number] = record.status;
         }
       });
 
@@ -81,10 +84,10 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
     }
   };
 
-  const handleAttendanceChange = (studentId: string, status: 'present' | 'absent') => {
+  const handleAttendanceChange = (studentRegisterNumber: string, status: 'present' | 'absent') => {
     setAttendance(prev => ({
       ...prev,
-      [studentId]: status
+      [studentRegisterNumber]: status
     }));
   };
 
@@ -94,26 +97,21 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error('No authenticated user');
 
-      // Prepare attendance records
-      const attendanceRecords: AttendanceRecord[] = Object.entries(attendance).map(([studentId, status]) => ({
-        student_id: studentId,
+      const attendanceRecords: AttendanceRecord[] = Object.entries(attendance).map(([studentRegisterNumber, status]) => ({
+        student_register_number: studentRegisterNumber,
         status
       }));
 
-      // Delete existing records for this date
       await supabase
         .from('attendance')
         .delete()
         .eq('date', selectedDate)
-        .in('student_id', Object.keys(attendance));
+        .in('student_register_number', Object.keys(attendance));
 
-      // Insert new records
       const recordsToInsert = attendanceRecords.map(record => {
-        const student = students.find(s => s.id === record.student_id);
+        const student = students.find(s => s.register_number === record.student_register_number);
         return {
-          student_id: record.student_id,
-          student_name: student?.name || '',
-          student_class: student?.class || '',
+          student_register_number: record.student_register_number,
           status: record.status,
           recorded_by: userData.user.id,
           date: selectedDate
@@ -140,7 +138,7 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
   const markAllPresent = () => {
     const allPresent: Record<string, 'present' | 'absent'> = {};
     students.forEach(student => {
-      allPresent[student.id] = 'present';
+      allPresent[student.register_number] = 'present';
     });
     setAttendance(allPresent);
   };
@@ -148,14 +146,14 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
   const markAllAbsent = () => {
     const allAbsent: Record<string, 'present' | 'absent'> = {};
     students.forEach(student => {
-      allAbsent[student.id] = 'absent';
+      allAbsent[student.register_number] = 'absent';
     });
     setAttendance(allAbsent);
   };
 
   const getFilteredStudents = () => {
     if (quickFilter === 'all') return students;
-    return students.filter(student => attendance[student.id] === quickFilter);
+    return students.filter(student => attendance[student.register_number] === quickFilter);
   };
 
   const groupedStudents = getFilteredStudents().reduce((acc, student) => {
@@ -166,10 +164,8 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
     return acc;
   }, {} as Record<string, Student[]>);
 
-  // Sort students alphabetically within each class
   Object.keys(groupedStudents).forEach(className => {
     groupedStudents[className].sort((a, b) => {
-      // Sort by creation date (oldest to newest)
       return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
     });
   });
@@ -229,7 +225,6 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
         </div>
       ) : (
         <>
-          {/* Quick Actions */}
           <div className="flex flex-col xs:flex-row flex-wrap gap-3 mb-6 p-3 sm:p-4 bg-gray-50 rounded-lg">
             <div className="flex gap-2 flex-wrap">
               <button
@@ -250,7 +245,6 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
               </button>
             </div>
             
-            {/* Quick Filter */}
             <div className="flex items-center gap-2 mt-2 xs:mt-0 xs:ml-4">
               <span className="text-xs sm:text-sm font-medium text-gray-700">Show:</span>
               <select
@@ -271,7 +265,6 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
             </div>
           </div>
 
-          {/* Attendance List */}
           <div className="space-y-6">
             {Object.entries(groupedStudents).length === 0 ? (
               <div className="text-center py-8 text-gray-500">
@@ -287,13 +280,13 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
                   </h3>
                   <div className="grid grid-cols-1 gap-3">
                     {classStudents.map((student) => (
-                      <div key={student.id} className="flex flex-col xs:flex-row items-start xs:items-center justify-between p-3 bg-gray-50 rounded-lg gap-3 xs:gap-0">
+                      <div key={student.register_number} className="flex flex-col xs:flex-row items-start xs:items-center justify-between p-3 bg-gray-50 rounded-lg gap-3 xs:gap-0">
                         <span className="font-medium text-gray-900">{student.name}</span>
                         <div className="flex gap-2 w-full xs:w-auto">
                           <button
-                            onClick={() => handleAttendanceChange(student.id, 'present')}
+                            onClick={() => handleAttendanceChange(student.register_number, 'present')}
                             className={`flex-1 xs:flex-none flex items-center justify-center gap-1 px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                              attendance[student.id] === 'present'
+                              attendance[student.register_number] === 'present'
                                 ? 'bg-green-100 text-green-700 border-2 border-green-500'
                                 : 'bg-white text-gray-600 border border-gray-300 hover:bg-green-50'
                             }`}
@@ -302,9 +295,9 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
                             Present
                           </button>
                           <button
-                            onClick={() => handleAttendanceChange(student.id, 'absent')}
+                            onClick={() => handleAttendanceChange(student.register_number, 'absent')}
                             className={`flex-1 xs:flex-none flex items-center justify-center gap-1 px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                              attendance[student.id] === 'absent'
+                              attendance[student.register_number] === 'absent'
                                 ? 'bg-red-100 text-red-700 border-2 border-red-500'
                                 : 'bg-white text-gray-600 border border-gray-300 hover:bg-red-50'
                             }`}
@@ -321,7 +314,6 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
             )}
           </div>
 
-          {/* Save Button */}
           {totalMarked > 0 && (
             <div className="mt-6 flex justify-center">
               <button

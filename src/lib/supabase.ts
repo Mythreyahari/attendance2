@@ -39,6 +39,10 @@ export type Database = {
           class: string;
           added_by: string;
           created_at: string;
+          roll_number: string;
+          register_number: string;
+          department: string;
+          shift: number;
         };
         Insert: {
           id?: string;
@@ -46,6 +50,10 @@ export type Database = {
           class: string;
           added_by: string;
           created_at?: string;
+          roll_number: string;
+          register_number: string;
+          department: string;
+          shift: number;
         };
         Update: {
           id?: string;
@@ -53,6 +61,10 @@ export type Database = {
           class?: string;
           added_by?: string;
           created_at?: string;
+          roll_number?: string;
+          register_number?: string;
+          department?: string;
+          shift?: number;
         };
       };
       attendance: {

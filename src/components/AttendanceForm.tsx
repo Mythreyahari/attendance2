@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { School, LogOut, Users, Calendar, CheckCircle, XCircle } from 'lucide-react';
+import { School, LogOut, Users, Calendar, CheckCircle, XCircle, FileText } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { StudentManagement } from './StudentManagement';
 import { DailyAttendance } from './DailyAttendance';
+import { MonthlyAnalysis } from './MonthlyAnalysis';
 
 interface AttendanceFormProps {
   onLogout: () => void;
@@ -10,7 +11,7 @@ interface AttendanceFormProps {
 }
 
 export function AttendanceForm({ onLogout, userEmail }: AttendanceFormProps) {
-  const [activeTab, setActiveTab] = useState<'attendance' | 'students'>('attendance');
+  const [activeTab, setActiveTab] = useState<'attendance' | 'students' | 'reports'>('attendance');
   const [todaysStats, setTodaysStats] = useState({ present: 0, absent: 0, total: 0 });
   const [studentsCount, setStudentsCount] = useState(0);
 
@@ -153,13 +154,27 @@ export function AttendanceForm({ onLogout, userEmail }: AttendanceFormProps) {
                 <span className="hidden xs:inline">Manage Students</span>
                 <span className="xs:hidden">Students</span>
               </button>
+              <button
+                onClick={() => setActiveTab('reports')}
+                className={`flex-1 flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors ${
+                  activeTab === 'reports'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <FileText className="h-4 w-4" />
+                <span className="hidden xs:inline">Monthly Analysis</span>
+                <span className="xs:hidden">Reports</span>
+              </button>
             </div>
 
             {/* Tab Content */}
             {activeTab === 'attendance' ? (
               <DailyAttendance onAttendanceChange={handleDataChange} />
-            ) : (
+            ) : activeTab === 'students' ? (
               <StudentManagement onStudentsChange={handleDataChange} />
+            ) : (
+              <MonthlyAnalysis />
             )}
           </div>
 
