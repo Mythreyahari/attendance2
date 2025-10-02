@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 
 interface AttendanceRecord {
   id: string;
+  student_register_number: string;
   student_name: string;
   student_class: string;
   status: 'present' | 'absent';
@@ -14,9 +15,10 @@ interface AttendanceRecord {
 
 interface AttendanceViewerProps {
   onBack: () => void;
+  onAttendanceChange?: () => void;
 }
 
-export function AttendanceViewer({ onBack }: AttendanceViewerProps) {
+export function AttendanceViewer({ onBack, onAttendanceChange }: AttendanceViewerProps) {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<AttendanceRecord[]>([]);
   const [students, setStudents] = useState<{register_number: string; class: string; name: string;}[]>([]);
@@ -27,9 +29,16 @@ export function AttendanceViewer({ onBack }: AttendanceViewerProps) {
   const [availableClasses, setAvailableClasses] = useState<string[]>([]);
 
   useEffect(() => {
+    // Load students once on component mount
     loadStudents();
-    loadAttendanceRecords();
-  }, [selectedDate]);
+  }, []);
+
+  useEffect(() => {
+    // Load attendance records when students data is available and selectedDate changes
+    if (students.length > 0) {
+      loadAttendanceRecords();
+    }
+  }, [students, selectedDate]);
 
   useEffect(() => {
     applyFilters();
@@ -108,6 +117,57 @@ export function AttendanceViewer({ onBack }: AttendanceViewerProps) {
     }
 
     setFilteredRecords(filtered);
+  };
+
+  const handleDelete = async (attendanceId: string) => {
+    // Find the student_register_number for the attendance record to delete
+    const recordToDelete = attendanceRecords.find(record => record.id === attendanceId);
+    if (!recordToDelete) {
+      alert('Attendance record not found.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this student and all their attendance data? This action cannot be undone.'
+    );
+    if (!confirmed) return;
+
+    try {
+      // Delete all attendance records for the student
+      const { error: attendanceError } = await supabase
+        .from('attendance')
+        .delete()
+        .eq('student_register_number', recordToDelete.student_register_number);
+
+      if (attendanceError) {
+        console.error('Error deleting attendance records:', attendanceError);
+        alert('Failed to delete attendance records. Please try again.');
+        return;
+      }
+
+      // Delete the student record
+      const { error: studentError } = await supabase
+        .from('students')
+        .delete()
+        .eq('register_number', recordToDelete.student_register_number);
+
+      if (studentError) {
+        console.error('Error deleting student record:', studentError);
+        alert('Failed to delete student record. Please try again.');
+        return;
+      }
+
+      // Refresh attendance records after deletion
+      await loadAttendanceRecords();
+
+      // Notify parent component about attendance change
+      if (onAttendanceChange) {
+        onAttendanceChange();
+      }
+    } catch (error) {
+      console.error('Error deleting student and attendance records:', error);
+      alert('Failed to delete student and attendance records. Please try again.');
+    }
   };
 
   const getStats = () => {
@@ -276,17 +336,26 @@ export function AttendanceViewer({ onBack }: AttendanceViewerProps) {
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-gray-900">{record.student_name}</span>
-                      <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                        record.status === 'present'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}>
-                        {record.status === 'present' ? (
-                          <CheckCircle className="h-3 w-3" />
-                        ) : (
-                          <XCircle className="h-3 w-3" />
-                        )}
-                        {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                      <div className="flex items-center gap-2">
+                        <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                          record.status === 'present'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-red-100 text-red-700'
+                        }`}>
+                          {record.status === 'present' ? (
+                            <CheckCircle className="h-3 w-3" />
+                          ) : (
+                            <XCircle className="h-3 w-3" />
+                          )}
+                          {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                        </div>
+                        <button
+                          onClick={() => handleDelete(record.id)}
+                          className="ml-2 text-red-600 hover:text-red-800 text-xs font-semibold"
+                          title="Delete Attendance Record"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
                     <div className="text-xs text-gray-500 mt-1">
