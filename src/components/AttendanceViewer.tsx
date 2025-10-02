@@ -19,6 +19,7 @@ interface AttendanceViewerProps {
 export function AttendanceViewer({ onBack }: AttendanceViewerProps) {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<AttendanceRecord[]>([]);
+  const [students, setStudents] = useState<{register_number: string; class: string; name: string;}[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'absent'>('all');
   const [classFilter, setClassFilter] = useState<string>('all');
@@ -26,6 +27,7 @@ export function AttendanceViewer({ onBack }: AttendanceViewerProps) {
   const [availableClasses, setAvailableClasses] = useState<string[]>([]);
 
   useEffect(() => {
+    loadStudents();
     loadAttendanceRecords();
   }, [selectedDate]);
 
@@ -33,23 +35,57 @@ export function AttendanceViewer({ onBack }: AttendanceViewerProps) {
     applyFilters();
   }, [attendanceRecords, statusFilter, classFilter]);
 
+  const loadStudents = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('register_number, class, name');
+
+      if (error) {
+        console.error('Error loading students:', error);
+        return;
+      }
+
+      setStudents(data || []);
+    } catch (error) {
+      console.error('Error loading students:', error);
+    }
+  };
+
   const loadAttendanceRecords = async () => {
     setLoading(true);
     try {
+      console.log('Loading attendance records for date:', selectedDate);
       const { data, error } = await supabase
         .from('attendance')
         .select('*')
         .eq('date', selectedDate)
-        .order('student_class', { ascending: true })
-        .order('student_name', { ascending: true });
+        .order('student_register_number', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase query error:', error);
+        throw error;
+      }
 
       const records = data || [];
-      setAttendanceRecords(records);
+
+      console.log('Students:', students);
+      console.log('Attendance records:', records);
+
+      // Merge attendance records with student class info
+      const mergedRecords = records.map(record => {
+        const student = students.find(s => s.register_number === record.student_register_number);
+        return {
+          ...record,
+          student_class: student ? student.class : 'Unknown',
+          student_name: student ? `${student.name} (${student.register_number})` : (record.student_name || 'Unknown'),
+        };
+      });
+
+      setAttendanceRecords(mergedRecords);
 
       // Extract unique classes
-      const classes = [...new Set(records.map(record => record.student_class))];
+      const classes = [...new Set(mergedRecords.map(record => record.student_class))];
       setAvailableClasses(classes);
     } catch (error) {
       console.error('Error loading attendance records:', error);
@@ -82,10 +118,12 @@ export function AttendanceViewer({ onBack }: AttendanceViewerProps) {
   };
 
   const groupedRecords = filteredRecords.reduce((acc, record) => {
-    if (!acc[record.student_class]) {
-      acc[record.student_class] = [];
+    // Group by student_class if available, else group by 'Unknown'
+    const classKey = record.student_class || 'Unknown';
+    if (!acc[classKey]) {
+      acc[classKey] = [];
     }
-    acc[record.student_class].push(record);
+    acc[classKey].push(record);
     return acc;
   }, {} as Record<string, AttendanceRecord[]>);
 

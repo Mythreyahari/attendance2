@@ -43,6 +43,7 @@ export type Database = {
           register_number: string;
           department: string;
           shift: number;
+          year: string; // Added year field
         };
         Insert: {
           id?: string;
@@ -54,6 +55,7 @@ export type Database = {
           register_number: string;
           department: string;
           shift: number;
+          year: string; // Added year field
         };
         Update: {
           id?: string;
@@ -65,6 +67,7 @@ export type Database = {
           register_number?: string;
           department?: string;
           shift?: number;
+          year?: string; // Added year field
         };
       };
       attendance: {
