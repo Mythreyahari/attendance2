@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, Edit2, Trash2, Save, X } from 'lucide-react';
+import { Plus, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface Student {
@@ -11,6 +11,7 @@ interface Student {
   register_number: string; // This is now the primary key
   department: string;
   shift: number;
+  year: string; // Added year field
 }
 
 interface StudentManagementProps {
@@ -25,15 +26,40 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
     roll_number: '',
     register_number: '',
     department: '',
-    shift: 1
+    shift: 1,
+    year: 'year1' // Default to year1
   });
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  
+  // Add state to track custom input mode
+  const [isCustomClass, setIsCustomClass] = useState(false);
+  const [isCustomDepartment, setIsCustomDepartment] = useState(false);
+  
+  // Predefined options for departments and classes
+  const predefinedDepartments = React.useMemo(() => ['bsc', 'bca', 'bba', 'ba'], []);
+  const predefinedClasses = React.useMemo(() => ['cs', 'chemistry', 'botany', 'zoology', 'tamil', 'english', 'maths'], []);
+  
+  // State for dropdown options
+  const [departments, setDepartments] = useState<string[]>(predefinedDepartments);
+  const [classes, setClasses] = useState<string[]>(predefinedClasses);
 
   useEffect(() => {
     loadStudents();
   }, []);
+
+  useEffect(() => {
+    // Extract unique departments and classes from students
+    if (students.length > 0) {
+      const uniqueDepartments = [...new Set(students.map(s => s.department))];
+      const uniqueClasses = [...new Set(students.map(s => s.class))];
+      
+      // Combine predefined options with existing ones from database
+      setDepartments([...predefinedDepartments, ...uniqueDepartments.filter(dept => !predefinedDepartments.includes(dept))]);
+      setClasses([...predefinedClasses, ...uniqueClasses.filter(cls => !predefinedClasses.includes(cls))]);
+    }
+  }, [students, predefinedDepartments, predefinedClasses]);
 
   const loadStudents = async () => {
     try {
@@ -54,14 +80,28 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
     e.preventDefault();
     if (!newStudent.name.trim() || !newStudent.class.trim() || 
         !newStudent.roll_number.trim() || !newStudent.register_number.trim() || 
-        !newStudent.department.trim()) return;
+        !newStudent.department.trim() || !newStudent.year) return;
 
     setLoading(true);
     try {
       const { data: userData } = await supabase.auth.getUser();
+      console.log('Authenticated user data:', userData);
       if (!userData.user) throw new Error('No authenticated user');
 
-      const { error } = await supabase
+      // Check if user exists in users table
+      const { data: userRecord, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', userData.user.id)
+        .single();
+
+      if (userError || !userRecord) {
+        alert('Authenticated user record not found in users table. Please contact administrator.');
+        throw new Error('Authenticated user record not found in users table');
+      }
+
+      console.log('Inserting new student:', newStudent);
+      const { data, error } = await supabase
         .from('students')
         .insert({
           name: newStudent.name.trim(),
@@ -70,18 +110,29 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
           register_number: newStudent.register_number.trim(),
           department: newStudent.department.trim(),
           shift: newStudent.shift,
+          year: newStudent.year,
           added_by: userData.user.id,
         });
 
+      console.log('Insert response data:', data, 'error:', error);
       if (error) throw error;
 
-      setNewStudent({ name: '', class: '', roll_number: '', register_number: '', department: '', shift: 1 });
+      // Update departments and classes if new values
+      if (!departments.includes(newStudent.department.trim())) {
+        setDepartments([...departments, newStudent.department.trim()]);
+      }
+      if (!classes.includes(newStudent.class.trim())) {
+        setClasses([...classes, newStudent.class.trim()]);
+      }
+
+      setNewStudent({ name: '', class: '', roll_number: '', register_number: '', department: '', shift: 1, year: 'year1' });
       setShowAddForm(false);
       loadStudents();
       onStudentsChange();
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error adding student:', error);
-      alert('Failed to add student. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      alert(`Failed to add student. Please try again. Error: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -101,6 +152,7 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
           // Don't update register_number as it's the primary key
           department: editingStudent.department.trim(),
           shift: editingStudent.shift,
+          year: editingStudent.year,
         })
         .eq('register_number', editingStudent.register_number); // Use register_number instead of id
 
@@ -156,6 +208,42 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
       return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
     });
   });
+
+  // Handle department input change with dropdown update
+  const handleDepartmentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const value = e.target.value;
+    
+    if (value === 'custom') {
+      setIsCustomDepartment(true);
+      setNewStudent({ ...newStudent, department: '' });
+    } else {
+      setIsCustomDepartment(false);
+      setNewStudent({ ...newStudent, department: value });
+      
+      // If it's a new department, add it to the dropdown
+      if (value && !departments.includes(value)) {
+        setDepartments([...departments, value]);
+      }
+    }
+  };
+
+  // Handle class input change with dropdown update
+  const handleClassChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const value = e.target.value;
+    
+    if (value === 'custom') {
+      setIsCustomClass(true);
+      setNewStudent({ ...newStudent, class: '' });
+    } else {
+      setIsCustomClass(false);
+      setNewStudent({ ...newStudent, class: value });
+      
+      // If it's a new class, add it to the dropdown
+      if (value && !classes.includes(value)) {
+        setClasses([...classes, value]);
+      }
+    }
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
@@ -220,27 +308,55 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Class
                 </label>
-                <input
-                  type="text"
+                <select
                   required
-                  value={newStudent.class}
-                  onChange={(e) => setNewStudent({ ...newStudent, class: e.target.value })}
+                  value={isCustomClass ? 'custom' : newStudent.class}
+                  onChange={(e) => handleClassChange(e)}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., Grade 5A, Class 10B"
-                />
+                >
+                  <option value="">Select Class</option>
+                  {classes.map((cls) => (
+                    <option key={cls} value={cls}>{cls}</option>
+                  ))}
+                  <option value="custom">Add New Class</option>
+                </select>
+                {isCustomClass && (
+                  <input
+                    type="text"
+                    required
+                    value={newStudent.class}
+                    className="w-full mt-2 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter new class"
+                    onChange={(e) => setNewStudent({ ...newStudent, class: e.target.value })}
+                  />
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Department
                 </label>
-                <input
-                  type="text"
+                <select
                   required
-                  value={newStudent.department}
-                  onChange={(e) => setNewStudent({ ...newStudent, department: e.target.value })}
+                  value={isCustomDepartment ? 'custom' : newStudent.department}
+                  onChange={(e) => handleDepartmentChange(e)}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter department"
-                />
+                >
+                  <option value="">Select Department</option>
+                  {departments.map((dept) => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                  <option value="custom">Add New Department</option>
+                </select>
+                {isCustomDepartment && (
+                  <input
+                    type="text"
+                    required
+                    value={newStudent.department}
+                    className="w-full mt-2 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter new department"
+                    onChange={(e) => setNewStudent({ ...newStudent, department: e.target.value })}
+                  />
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -254,6 +370,21 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
                 >
                   <option value={1}>Shift 1</option>
                   <option value={2}>Shift 2</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Year
+                </label>
+                <select
+                  required
+                  value={newStudent.year}
+                  onChange={(e) => setNewStudent({ ...newStudent, year: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="year1">Year 1</option>
+                  <option value="year2">Year 2</option>
+                  <option value="year3">Year 3</option>
                 </select>
               </div>
             </div>
@@ -277,7 +408,100 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
         </div>
       )}
 
-      {/* The rest of the component remains the same */}
+      {/* Display students */}
+      {Object.entries(groupedStudents).map(([className, students]) => (
+        <div key={className} className="mb-6 border border-gray-200 rounded-lg p-4">
+          <h3 className="font-semibold text-gray-900 mb-4">{className}</h3>
+          <div className="space-y-4">
+            {students.map((student) => (
+              <div key={student.register_number} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <p className="font-medium">{student.name}</p>
+                  <p className="text-sm text-gray-600">Reg: {student.register_number} | Dept: {student.department}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditingStudent(student)}
+                    className="p-2 text-blue-600 hover:bg-blue-100 rounded"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => deleteStudent(student.register_number)}
+                    className="p-2 text-red-600 hover:bg-red-100 rounded"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* Edit Student Modal */}
+      {editingStudent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full">
+            <h3 className="text-lg font-semibold mb-4">Edit Student</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={editingStudent.name}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, name: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
+                <input
+                  type="text"
+                  value={editingStudent.class}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, class: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                <input
+                  type="text"
+                  value={editingStudent.department}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, department: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                <select
+                  value={editingStudent.year}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, year: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                >
+                  <option value="year1">Year 1</option>
+                  <option value="year2">Year 2</option>
+                  <option value="year3">Year 3</option>
+                </select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setEditingStudent(null)}
+                  className="px-4 py-2 text-sm bg-gray-200 rounded-lg hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={updateStudent}
+                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Calendar, Download, FileText } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Download, FileText } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -28,6 +28,39 @@ export function MonthlyAnalysis() {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(false);
+  
+  // Added filters
+  const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+  const [classFilter, setClassFilter] = useState<string>('all');
+  const [shiftFilter, setShiftFilter] = useState<string>('all');
+  const [yearFilter, setYearFilter] = useState<string>('all');
+  
+  // Lists for filter dropdowns
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [classes, setClasses] = useState<string[]>([]);
+  
+  useEffect(() => {
+    loadFilterOptions();
+  }, []);
+  
+  const loadFilterOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('department, class');
+      
+      if (error) throw error;
+      
+      if (data) {
+        const uniqueDepartments = [...new Set(data.map(s => s.department))];
+        const uniqueClasses = [...new Set(data.map(s => s.class))];
+        setDepartments(uniqueDepartments);
+        setClasses(uniqueClasses);
+      }
+    } catch (error) {
+      console.error('Error loading filter options:', error);
+    }
+  };
 
   const generateReport = async () => {
     setLoading(true);
@@ -39,16 +72,35 @@ export function MonthlyAnalysis() {
       const startDate = `${year}-${month.toString().padStart(2, '0')}-01`;
       const endDate = `${year}-${month.toString().padStart(2, '0')}-${daysInMonth.toString().padStart(2, '0')}`;
       
-      // Fetch all students
-      const { data: students, error: studentsError } = await supabase
+      // Fetch all students with filters
+      let query = supabase
         .from('students')
         .select('*')
         .order('class', { ascending: true })
         .order('name', { ascending: true });
       
+      // Apply filters
+      if (departmentFilter !== 'all') {
+        query = query.eq('department', departmentFilter);
+      }
+      
+      if (classFilter !== 'all') {
+        query = query.eq('class', classFilter);
+      }
+      
+      if (shiftFilter !== 'all') {
+        query = query.eq('shift', parseInt(shiftFilter));
+      }
+      
+      if (yearFilter !== 'all') {
+        query = query.eq('year', yearFilter);
+      }
+      
+      const { data: students, error: studentsError } = await query;
+      
       if (studentsError) throw studentsError;
       if (!students || students.length === 0) {
-        alert('No students found. Please add students first.');
+        alert('No students found matching the selected filters.');
         setLoading(false);
         return;
       }
@@ -58,7 +110,8 @@ export function MonthlyAnalysis() {
         .from('attendance')
         .select('*')
         .gte('date', startDate)
-        .lte('date', endDate);
+        .lte('date', endDate)
+        .in('student_register_number', students.map(s => s.register_number));
       
       if (attendanceError) throw attendanceError;
       
@@ -104,9 +157,21 @@ export function MonthlyAnalysis() {
       doc.text(`Total Working Days: ${totalWorkingDays}`, 14, 30);
       doc.text(`Report Generated: ${new Date().toLocaleDateString()}`, 14, 35);
       
+      // Add filter information
+      let filterText = '';
+      if (departmentFilter !== 'all') filterText += `Department: ${departmentFilter}, `;
+      if (classFilter !== 'all') filterText += `Class: ${classFilter}, `;
+      if (shiftFilter !== 'all') filterText += `Shift: ${shiftFilter}, `;
+      if (yearFilter !== 'all') filterText += `Year: ${yearFilter}, `;
+      
+      if (filterText) {
+        filterText = `Filters: ${filterText.slice(0, -2)}`; // Remove trailing comma and space
+        doc.text(filterText, 14, 40);
+      }
+      
       // Add table
       autoTable(doc, {
-        startY: 40,
+        startY: filterText ? 45 : 40,
         head: [[
           'Reg. Number', 
           'Name', 
@@ -150,7 +215,7 @@ export function MonthlyAnalysis() {
         <h2 className="text-lg font-semibold text-gray-900">Monthly Attendance Analysis</h2>
       </div>
       
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Month</label>
           <select 
@@ -185,6 +250,52 @@ export function MonthlyAnalysis() {
             ))}
           </select>
         </div>
+      </div>
+      
+      {/* Filter options */}
+      <div className="flex flex-wrap gap-2 mb-6 p-3 bg-gray-50 rounded-lg">
+        <select
+          value={departmentFilter}
+          onChange={(e) => setDepartmentFilter(e.target.value)}
+          className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">All Departments</option>
+          {departments.map(dept => (
+            <option key={dept} value={dept}>{dept}</option>
+          ))}
+        </select>
+        
+        <select
+          value={classFilter}
+          onChange={(e) => setClassFilter(e.target.value)}
+          className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">All Classes</option>
+          {classes.map(cls => (
+            <option key={cls} value={cls}>{cls}</option>
+          ))}
+        </select>
+        
+        <select
+          value={shiftFilter}
+          onChange={(e) => setShiftFilter(e.target.value)}
+          className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">All Shifts</option>
+          <option value="1">Shift 1</option>
+          <option value="2">Shift 2</option>
+        </select>
+        
+        <select
+          value={yearFilter}
+          onChange={(e) => setYearFilter(e.target.value)}
+          className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">All Years</option>
+          <option value="year1">Year 1</option>
+          <option value="year2">Year 2</option>
+          <option value="year3">Year 3</option>
+        </select>
       </div>
       
       <button

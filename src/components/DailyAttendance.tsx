@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, XCircle, Calendar, Save, Users, Eye } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AttendanceViewer } from './AttendanceViewer';
@@ -11,6 +11,7 @@ interface Student {
   roll_number: string;
   department: string;
   shift: number;
+  year: string; // Added year field
 }
 
 interface AttendanceRecord {
@@ -31,34 +32,18 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [showViewer, setShowViewer] = useState(false);
   const [quickFilter, setQuickFilter] = useState<'all' | 'present' | 'absent'>('all');
+  
+  // Added filters
+  const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+  const [classFilter, setClassFilter] = useState<string>('all');
+  const [shiftFilter, setShiftFilter] = useState<string>('all');
+  const [yearFilter, setYearFilter] = useState<string>('all');
+  
+  // Lists for filter dropdowns
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [classes, setClasses] = useState<string[]>([]);
 
-  useEffect(() => {
-    loadStudents();
-  }, []);
-
-  useEffect(() => {
-    loadExistingAttendance();
-  }, [selectedDate, students]);
-
-  const loadStudents = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('*')
-        .order('class', { ascending: true })
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      setStudents(data || []);
-    } catch (error) {
-      console.error('Error loading students:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadExistingAttendance = async () => {
+  const loadExistingAttendance = useCallback(async () => {
     if (students.length === 0) return;
 
     try {
@@ -81,6 +66,47 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
       setAttendance(existingRecords);
     } catch (error) {
       console.error('Error loading existing attendance:', error);
+    }
+  }, [selectedDate, students]);
+
+  useEffect(() => {
+    loadStudents();
+  }, []);
+
+  const reloadData = async () => {
+    await loadStudents();
+    await loadExistingAttendance();
+  };
+
+  useEffect(() => {
+    loadExistingAttendance();
+  }, [selectedDate, students, loadExistingAttendance]);
+  
+  useEffect(() => {
+    // Extract unique departments and classes from students
+    if (students.length > 0) {
+      const uniqueDepartments = [...new Set(students.map(s => s.department))];
+      const uniqueClasses = [...new Set(students.map(s => s.class))];
+      setDepartments(uniqueDepartments);
+      setClasses(uniqueClasses);
+    }
+  }, [students]);
+
+  const loadStudents = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .order('class', { ascending: true })
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setStudents(data || []);
+    } catch (error) {
+      console.error('Error loading students:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -108,15 +134,12 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
         .eq('date', selectedDate)
         .in('student_register_number', Object.keys(attendance));
 
-      const recordsToInsert = attendanceRecords.map(record => {
-        const student = students.find(s => s.register_number === record.student_register_number);
-        return {
-          student_register_number: record.student_register_number,
-          status: record.status,
-          recorded_by: userData.user.id,
-          date: selectedDate
-        };
-      });
+      const recordsToInsert = attendanceRecords.map(record => ({
+        student_register_number: record.student_register_number,
+        status: record.status,
+        recorded_by: userData.user.id,
+        date: selectedDate
+      }));
 
       const { error } = await supabase
         .from('attendance')
@@ -137,23 +160,46 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
 
   const markAllPresent = () => {
     const allPresent: Record<string, 'present' | 'absent'> = {};
-    students.forEach(student => {
+    getFilteredStudents().forEach(student => {
       allPresent[student.register_number] = 'present';
     });
-    setAttendance(allPresent);
+    setAttendance({...attendance, ...allPresent});
   };
 
   const markAllAbsent = () => {
     const allAbsent: Record<string, 'present' | 'absent'> = {};
-    students.forEach(student => {
+    getFilteredStudents().forEach(student => {
       allAbsent[student.register_number] = 'absent';
     });
-    setAttendance(allAbsent);
+    setAttendance({...attendance, ...allAbsent});
   };
 
   const getFilteredStudents = () => {
-    if (quickFilter === 'all') return students;
-    return students.filter(student => attendance[student.register_number] === quickFilter);
+    // First filter by attendance status
+    let filtered = students;
+    
+    if (quickFilter !== 'all') {
+      filtered = filtered.filter(student => attendance[student.register_number] === quickFilter);
+    }
+    
+    // Then apply additional filters
+    if (departmentFilter !== 'all') {
+      filtered = filtered.filter(student => student.department === departmentFilter);
+    }
+    
+    if (classFilter !== 'all') {
+      filtered = filtered.filter(student => student.class === classFilter);
+    }
+    
+    if (shiftFilter !== 'all') {
+      filtered = filtered.filter(student => student.shift === parseInt(shiftFilter));
+    }
+    
+    if (yearFilter !== 'all') {
+      filtered = filtered.filter(student => student.year === yearFilter);
+    }
+    
+    return filtered;
   };
 
   const groupedStudents = getFilteredStudents().reduce((acc, student) => {
@@ -176,7 +222,7 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
   const totalMarked = Object.keys(attendance).length;
 
   if (showViewer) {
-    return <AttendanceViewer onBack={() => setShowViewer(false)} />;
+    return <AttendanceViewer onBack={() => setShowViewer(false)} onAttendanceChange={reloadData} />;
   }
 
   if (loading) {
@@ -255,6 +301,52 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
                 <option value="all">All Students</option>
                 <option value="present">Present Only</option>
                 <option value="absent">Absent Only</option>
+              </select>
+            </div>
+            
+            {/* Additional filters */}
+            <div className="flex flex-wrap items-center gap-2 mt-2 xs:mt-0">
+              <select
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+                className="px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Departments</option>
+                {departments.map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+              </select>
+              
+              <select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                className="px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Classes</option>
+                {classes.map(cls => (
+                  <option key={cls} value={cls}>{cls}</option>
+                ))}
+              </select>
+              
+              <select
+                value={shiftFilter}
+                onChange={(e) => setShiftFilter(e.target.value)}
+                className="px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Shifts</option>
+                <option value="1">Shift 1</option>
+                <option value="2">Shift 2</option>
+              </select>
+              
+              <select
+                value={yearFilter}
+                onChange={(e) => setYearFilter(e.target.value)}
+                className="px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Years</option>
+                <option value="year1">Year 1</option>
+                <option value="year2">Year 2</option>
+                <option value="year3">Year 3</option>
               </select>
             </div>
 

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Calendar, Users, CheckCircle, XCircle, Eye, Filter } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface AttendanceRecord {
   id: string;
+  student_register_number: string;
   student_name: string;
   student_class: string;
   status: 'present' | 'absent';
@@ -14,11 +15,13 @@ interface AttendanceRecord {
 
 interface AttendanceViewerProps {
   onBack: () => void;
+  onAttendanceChange?: () => void;
 }
 
-export function AttendanceViewer({ onBack }: AttendanceViewerProps) {
+export function AttendanceViewer({ onBack, onAttendanceChange }: AttendanceViewerProps) {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<AttendanceRecord[]>([]);
+  const [students, setStudents] = useState<{register_number: string; class: string; name: string;}[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'absent'>('all');
   const [classFilter, setClassFilter] = useState<string>('all');
@@ -26,52 +29,141 @@ export function AttendanceViewer({ onBack }: AttendanceViewerProps) {
   const [availableClasses, setAvailableClasses] = useState<string[]>([]);
 
   useEffect(() => {
-    loadAttendanceRecords();
-  }, [selectedDate]);
+    // Load students once on component mount
+    loadStudents();
+  }, []);
 
-  useEffect(() => {
-    applyFilters();
-  }, [attendanceRecords, statusFilter, classFilter]);
-
-  const loadAttendanceRecords = async () => {
+  const loadAttendanceRecords = useCallback(async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('attendance')
         .select('*')
         .eq('date', selectedDate)
-        .order('student_class', { ascending: true })
-        .order('student_name', { ascending: true });
+        .order('student_register_number', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase query error:', error);
+        throw error;
+      }
 
       const records = data || [];
-      setAttendanceRecords(records);
+
+      // Merge attendance records with student class info
+      const mergedRecords = records.map(record => {
+        const student = students.find(s => s.register_number === record.student_register_number);
+        return {
+          ...record,
+          student_class: student ? student.class : 'Unknown',
+          student_name: student ? `${student.name} (${student.register_number})` : (record.student_name || 'Unknown'),
+        };
+      });
+
+      setAttendanceRecords(mergedRecords);
 
       // Extract unique classes
-      const classes = [...new Set(records.map(record => record.student_class))];
+      const classes = [...new Set(mergedRecords.map(record => record.student_class))];
       setAvailableClasses(classes);
     } catch (error) {
       console.error('Error loading attendance records:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedDate, students]);
 
-  const applyFilters = () => {
-    let filtered = attendanceRecords;
-
-    // Filter by status
+  const applyFilters = useCallback(() => {
+    let filtered = [...attendanceRecords];
+    
+    // Apply status filter
     if (statusFilter !== 'all') {
       filtered = filtered.filter(record => record.status === statusFilter);
     }
-
-    // Filter by class
+    
+    // Apply class filter
     if (classFilter !== 'all') {
       filtered = filtered.filter(record => record.student_class === classFilter);
     }
-
+    
     setFilteredRecords(filtered);
+  }, [attendanceRecords, statusFilter, classFilter]);
+
+  useEffect(() => {
+    // Load attendance records when students data is available and selectedDate changes
+    if (students.length > 0) {
+      loadAttendanceRecords();
+    }
+  }, [students.length, selectedDate, loadAttendanceRecords]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [attendanceRecords, statusFilter, classFilter, applyFilters]);
+
+  const loadStudents = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('register_number, class, name');
+
+      if (error) {
+        console.error('Error loading students:', error);
+        return;
+      }
+
+      setStudents(data || []);
+    } catch (error) {
+      console.error('Error loading students:', error);
+    }
+  };
+
+  const handleDelete = async (attendanceId: string) => {
+    // Find the student_register_number for the attendance record to delete
+    const recordToDelete = attendanceRecords.find(record => record.id === attendanceId);
+    if (!recordToDelete) {
+      alert('Attendance record not found.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this student and all their attendance data? This action cannot be undone.'
+    );
+    if (!confirmed) return;
+
+    try {
+      // Delete all attendance records for the student
+      const { error: attendanceError } = await supabase
+        .from('attendance')
+        .delete()
+        .eq('student_register_number', recordToDelete.student_register_number);
+
+      if (attendanceError) {
+        console.error('Error deleting attendance records:', attendanceError);
+        alert('Failed to delete attendance records. Please try again.');
+        return;
+      }
+
+      // Delete the student record
+      const { error: studentError } = await supabase
+        .from('students')
+        .delete()
+        .eq('register_number', recordToDelete.student_register_number);
+
+      if (studentError) {
+        console.error('Error deleting student record:', studentError);
+        alert('Failed to delete student record. Please try again.');
+        return;
+      }
+
+      // Refresh attendance records after deletion
+      await loadAttendanceRecords();
+
+      // Notify parent component about attendance change
+      if (onAttendanceChange) {
+        onAttendanceChange();
+      }
+    } catch (error) {
+      console.error('Error deleting student and attendance records:', error);
+      alert('Failed to delete student and attendance records. Please try again.');
+    }
   };
 
   const getStats = () => {
@@ -82,10 +174,12 @@ export function AttendanceViewer({ onBack }: AttendanceViewerProps) {
   };
 
   const groupedRecords = filteredRecords.reduce((acc, record) => {
-    if (!acc[record.student_class]) {
-      acc[record.student_class] = [];
+    // Group by student_class if available, else group by 'Unknown'
+    const classKey = record.student_class || 'Unknown';
+    if (!acc[classKey]) {
+      acc[classKey] = [];
     }
-    acc[record.student_class].push(record);
+    acc[classKey].push(record);
     return acc;
   }, {} as Record<string, AttendanceRecord[]>);
 
@@ -238,17 +332,26 @@ export function AttendanceViewer({ onBack }: AttendanceViewerProps) {
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium text-gray-900">{record.student_name}</span>
-                      <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                        record.status === 'present'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}>
-                        {record.status === 'present' ? (
-                          <CheckCircle className="h-3 w-3" />
-                        ) : (
-                          <XCircle className="h-3 w-3" />
-                        )}
-                        {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                      <div className="flex items-center gap-2">
+                        <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                          record.status === 'present'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-red-100 text-red-700'
+                        }`}>
+                          {record.status === 'present' ? (
+                            <CheckCircle className="h-3 w-3" />
+                          ) : (
+                            <XCircle className="h-3 w-3" />
+                          )}
+                          {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                        </div>
+                        <button
+                          onClick={() => handleDelete(record.id)}
+                          className="ml-2 text-red-600 hover:text-red-800 text-xs font-semibold"
+                          title="Delete Attendance Record"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
                     <div className="text-xs text-gray-500 mt-1">

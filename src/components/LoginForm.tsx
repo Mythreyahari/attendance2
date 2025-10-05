@@ -38,8 +38,14 @@ export function LoginForm({ onLogin }: LoginFormProps) {
             full_name: data.user.user_metadata?.full_name || null,
           });
 
-        if (profileError && profileError.code !== '23505') {
-          console.error('Profile creation error:', profileError);
+        if (profileError) {
+          if (profileError.code !== '23505') {
+            console.error('Profile creation error:', profileError);
+          } else {
+            console.log('User profile already exists.');
+          }
+        } else {
+          console.log('User profile upsert successful.');
         }
 
         onLogin();
