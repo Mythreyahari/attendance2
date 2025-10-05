@@ -193,7 +193,22 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
     }
   };
 
-  const groupedStudents = students.reduce((acc, student) => {
+  // Filters state
+  const [departmentFilter, setDepartmentFilter] = React.useState<string>('all');
+  const [classFilter, setClassFilter] = React.useState<string>('all');
+  const [shiftFilter, setShiftFilter] = React.useState<string>('all');
+  const [yearFilter, setYearFilter] = React.useState<string>('all');
+
+  // Filtered students based on filters
+  const filteredStudents = students.filter(student => {
+    if (departmentFilter !== 'all' && student.department !== departmentFilter) return false;
+    if (classFilter !== 'all' && student.class !== classFilter) return false;
+    if (shiftFilter !== 'all' && student.shift !== parseInt(shiftFilter)) return false;
+    if (yearFilter !== 'all' && student.year !== yearFilter) return false;
+    return true;
+  });
+
+  const groupedStudents = filteredStudents.reduce((acc, student) => {
     if (!acc[student.class]) {
       acc[student.class] = [];
     }
@@ -259,6 +274,52 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
           <Plus className="h-4 w-4" />
           Add Student
         </button>
+      </div>
+
+      {/* Filters UI */}
+      <div className="flex flex-wrap items-center gap-2 mb-6 p-3 sm:p-4 bg-gray-50 rounded-lg">
+        <select
+          value={departmentFilter}
+          onChange={(e) => setDepartmentFilter(e.target.value)}
+          className="px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">All Departments</option>
+          {departments.map(dept => (
+            <option key={dept} value={dept}>{dept}</option>
+          ))}
+        </select>
+
+        <select
+          value={classFilter}
+          onChange={(e) => setClassFilter(e.target.value)}
+          className="px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">All Classes</option>
+          {classes.map(cls => (
+            <option key={cls} value={cls}>{cls}</option>
+          ))}
+        </select>
+
+        <select
+          value={shiftFilter}
+          onChange={(e) => setShiftFilter(e.target.value)}
+          className="px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">All Shifts</option>
+          <option value="1">Shift 1</option>
+          <option value="2">Shift 2</option>
+        </select>
+
+        <select
+          value={yearFilter}
+          onChange={(e) => setYearFilter(e.target.value)}
+          className="px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="all">All Years</option>
+          <option value="year1">Year 1</option>
+          <option value="year2">Year 2</option>
+          <option value="year3">Year 3</option>
+        </select>
       </div>
 
       {showAddForm && (
@@ -408,7 +469,7 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
         </div>
       )}
 
-      {/* Display students */}
+      {/* Display students */} 
       {Object.entries(groupedStudents).map(([className, students]) => (
         <div key={className} className="mb-6 border border-gray-200 rounded-lg p-4">
           <h3 className="font-semibold text-gray-900 mb-4">{className}</h3>

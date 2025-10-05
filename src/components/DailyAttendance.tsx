@@ -73,10 +73,7 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
     loadStudents();
   }, []);
 
-  const reloadData = async () => {
-    await loadStudents();
-    await loadExistingAttendance();
-  };
+
 
   useEffect(() => {
     loadExistingAttendance();
@@ -222,7 +219,7 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
   const totalMarked = Object.keys(attendance).length;
 
   if (showViewer) {
-    return <AttendanceViewer onBack={() => setShowViewer(false)} onAttendanceChange={reloadData} />;
+    return <AttendanceViewer onBack={() => setShowViewer(false)} />;
   }
 
   if (loading) {
