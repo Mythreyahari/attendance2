@@ -1,36 +1,58 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Calendar, Users, CheckCircle, XCircle, Eye, Filter } from 'lucide-react';
+import { ArrowLeft, Calendar, Users, CheckCircle, XCircle, Filter } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
+interface Student {
+  register_number: string;
+  name: string;
+  class: string;
+  created_at: string;
+  roll_number: string;
+  department: string;
+  shift: number;
+  year: string;
+}
+
 interface AttendanceRecord {
-  id: string;
   student_register_number: string;
-  student_name: string;
-  student_class: string;
   status: 'present' | 'absent';
   date: string;
-  recorded_at: string;
-  student_id: string | null;
 }
 
 interface AttendanceViewerProps {
   onBack: () => void;
-  onAttendanceChange?: () => void;
 }
 
-export function AttendanceViewer({ onBack, onAttendanceChange }: AttendanceViewerProps) {
+export function AttendanceViewer({ onBack }: AttendanceViewerProps) {
+  const [students, setStudents] = useState<Student[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
-  const [filteredRecords, setFilteredRecords] = useState<AttendanceRecord[]>([]);
-  const [students, setStudents] = useState<{register_number: string; class: string; name: string;}[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'absent'>('all');
-  const [classFilter, setClassFilter] = useState<string>('all');
   const [loading, setLoading] = useState(false);
-  const [availableClasses, setAvailableClasses] = useState<string[]>([]);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
-  useEffect(() => {
-    // Load students once on component mount
-    loadStudents();
+  // Filters
+  const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+  const [classFilter, setClassFilter] = useState<string>('all');
+  const [shiftFilter, setShiftFilter] = useState<string>('all');
+  const [yearFilter, setYearFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Lists for filter dropdowns
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [classes, setClasses] = useState<string[]>([]);
+
+  const loadStudents = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .order('class', { ascending: true })
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setStudents(data || []);
+    } catch (error) {
+      console.error('Error loading students:', error);
+    }
   }, []);
 
   const loadAttendanceRecords = useCallback(async () => {
@@ -38,330 +60,245 @@ export function AttendanceViewer({ onBack, onAttendanceChange }: AttendanceViewe
     try {
       const { data, error } = await supabase
         .from('attendance')
-        .select('*')
+        .select('student_register_number, status, date')
         .eq('date', selectedDate)
         .order('student_register_number', { ascending: true });
 
-      if (error) {
-        console.error('Supabase query error:', error);
-        throw error;
-      }
-
-      const records = data || [];
-
-      // Merge attendance records with student class info
-      const mergedRecords = records.map(record => {
-        const student = students.find(s => s.register_number === record.student_register_number);
-        return {
-          ...record,
-          student_class: student ? student.class : 'Unknown',
-          student_name: student ? `${student.name} (${student.register_number})` : (record.student_name || 'Unknown'),
-        };
-      });
-
-      setAttendanceRecords(mergedRecords);
-
-      // Extract unique classes
-      const classes = [...new Set(mergedRecords.map(record => record.student_class))];
-      setAvailableClasses(classes);
+      if (error) throw error;
+      setAttendanceRecords(data || []);
     } catch (error) {
       console.error('Error loading attendance records:', error);
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, students]);
-
-  const applyFilters = useCallback(() => {
-    let filtered = [...attendanceRecords];
-    
-    // Apply status filter
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(record => record.status === statusFilter);
-    }
-    
-    // Apply class filter
-    if (classFilter !== 'all') {
-      filtered = filtered.filter(record => record.student_class === classFilter);
-    }
-    
-    setFilteredRecords(filtered);
-  }, [attendanceRecords, statusFilter, classFilter]);
+  }, [selectedDate]);
 
   useEffect(() => {
-    // Load attendance records when students data is available and selectedDate changes
+    loadStudents();
+    loadAttendanceRecords();
+  }, [loadStudents, loadAttendanceRecords]);
+
+  useEffect(() => {
+    // Extract unique departments and classes from students
     if (students.length > 0) {
-      loadAttendanceRecords();
+      const uniqueDepartments = [...new Set(students.map(s => s.department))];
+      const uniqueClasses = [...new Set(students.map(s => s.class))];
+      setDepartments(uniqueDepartments);
+      setClasses(uniqueClasses);
     }
-  }, [students.length, selectedDate, loadAttendanceRecords]);
+  }, [students]);
 
-  useEffect(() => {
-    applyFilters();
-  }, [attendanceRecords, statusFilter, classFilter, applyFilters]);
+  const getFilteredRecords = () => {
+    let filteredStudents = students;
 
-  const loadStudents = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('register_number, class, name');
-
-      if (error) {
-        console.error('Error loading students:', error);
-        return;
-      }
-
-      setStudents(data || []);
-    } catch (error) {
-      console.error('Error loading students:', error);
+    // Apply filters
+    if (departmentFilter !== 'all') {
+      filteredStudents = filteredStudents.filter(student => student.department === departmentFilter);
     }
+
+    if (classFilter !== 'all') {
+      filteredStudents = filteredStudents.filter(student => student.class === classFilter);
+    }
+
+    if (shiftFilter !== 'all') {
+      filteredStudents = filteredStudents.filter(student => student.shift === parseInt(shiftFilter));
+    }
+
+    if (yearFilter !== 'all') {
+      filteredStudents = filteredStudents.filter(student => student.year === yearFilter);
+    }
+
+    // Combine with attendance records
+    return filteredStudents.map(student => {
+      const record = attendanceRecords.find(r => r.student_register_number === student.register_number);
+      return {
+        ...student,
+        status: record?.status || 'not_marked'
+      };
+    }).filter(student => {
+      if (statusFilter === 'all') return true;
+      return student.status === statusFilter;
+    });
   };
 
-  const handleDelete = async (attendanceId: string) => {
-    // Find the student_register_number for the attendance record to delete
-    const recordToDelete = attendanceRecords.find(record => record.id === attendanceId);
-    if (!recordToDelete) {
-      alert('Attendance record not found.');
-      return;
+  const groupedRecords = getFilteredRecords().reduce((acc, student) => {
+    if (!acc[student.class]) {
+      acc[student.class] = [];
     }
-
-    const confirmed = window.confirm(
-      'Are you sure you want to delete this student and all their attendance data? This action cannot be undone.'
-    );
-    if (!confirmed) return;
-
-    try {
-      // Delete all attendance records for the student
-      const { error: attendanceError } = await supabase
-        .from('attendance')
-        .delete()
-        .eq('student_register_number', recordToDelete.student_register_number);
-
-      if (attendanceError) {
-        console.error('Error deleting attendance records:', attendanceError);
-        alert('Failed to delete attendance records. Please try again.');
-        return;
-      }
-
-      // Delete the student record
-      const { error: studentError } = await supabase
-        .from('students')
-        .delete()
-        .eq('register_number', recordToDelete.student_register_number);
-
-      if (studentError) {
-        console.error('Error deleting student record:', studentError);
-        alert('Failed to delete student record. Please try again.');
-        return;
-      }
-
-      // Refresh attendance records after deletion
-      await loadAttendanceRecords();
-
-      // Notify parent component about attendance change
-      if (onAttendanceChange) {
-        onAttendanceChange();
-      }
-    } catch (error) {
-      console.error('Error deleting student and attendance records:', error);
-      alert('Failed to delete student and attendance records. Please try again.');
-    }
-  };
-
-  const getStats = () => {
-    const present = attendanceRecords.filter(record => record.status === 'present').length;
-    const absent = attendanceRecords.filter(record => record.status === 'absent').length;
-    const total = attendanceRecords.length;
-    return { present, absent, total };
-  };
-
-  const groupedRecords = filteredRecords.reduce((acc, record) => {
-    // Group by student_class if available, else group by 'Unknown'
-    const classKey = record.student_class || 'Unknown';
-    if (!acc[classKey]) {
-      acc[classKey] = [];
-    }
-    acc[classKey].push(record);
+    acc[student.class].push(student);
     return acc;
-  }, {} as Record<string, AttendanceRecord[]>);
+  }, {} as Record<string, (Student & { status: string })[]>);
 
-  const stats = getStats();
+  Object.keys(groupedRecords).forEach(className => {
+    groupedRecords[className].sort((a, b) => {
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+  });
+
+  const presentCount = getFilteredRecords().filter(r => r.status === 'present').length;
+  const absentCount = getFilteredRecords().filter(r => r.status === 'absent').length;
+  const notMarkedCount = getFilteredRecords().filter(r => r.status === 'not_marked').length;
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-6 bg-gray-200 rounded w-1/4"></div>
+          <div className="space-y-3">
+            <div className="h-4 bg-gray-200 rounded"></div>
+            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
-          <Eye className="h-6 w-6 text-blue-600" />
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+          <Calendar className="h-6 w-6 text-blue-600" />
           <h2 className="text-lg font-semibold text-gray-900">View Attendance Records</h2>
         </div>
-        <button
-          onClick={onBack}
-          className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-        >
-          Back to Daily Attendance
-        </button>
-      </div>
-
-      {/* Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Select Date
-          </label>
+        <div className="flex flex-wrap items-center gap-3">
           <input
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
+      </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Filter by Status
-          </label>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as 'all' | 'present' | 'absent')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Students</option>
-            <option value="present">Present Only</option>
-            <option value="absent">Absent Only</option>
-          </select>
+      {/* Filters */}
+      <div className="flex flex-col xs:flex-row flex-wrap gap-3 mb-6 p-3 sm:p-4 bg-gray-50 rounded-lg">
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-gray-600" />
+          <span className="text-xs sm:text-sm font-medium text-gray-700">Filters:</span>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Filter by Class
-          </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={departmentFilter}
+            onChange={(e) => setDepartmentFilter(e.target.value)}
+            className="px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Departments</option>
+            {departments.map(dept => (
+              <option key={dept} value={dept}>{dept}</option>
+            ))}
+          </select>
+
           <select
             value={classFilter}
             onChange={(e) => setClassFilter(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Classes</option>
-            {availableClasses.map(className => (
-              <option key={className} value={className}>{className}</option>
+            {classes.map(cls => (
+              <option key={cls} value={cls}>{cls}</option>
             ))}
           </select>
+
+          <select
+            value={shiftFilter}
+            onChange={(e) => setShiftFilter(e.target.value)}
+            className="px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Shifts</option>
+            <option value="1">Shift 1</option>
+            <option value="2">Shift 2</option>
+          </select>
+
+          <select
+            value={yearFilter}
+            onChange={(e) => setYearFilter(e.target.value)}
+            className="px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Years</option>
+            <option value="year1">Year 1</option>
+            <option value="year2">Year 2</option>
+            <option value="year3">Year 3</option>
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Status</option>
+            <option value="present">Present Only</option>
+            <option value="absent">Absent Only</option>
+            <option value="not_marked">Not Marked</option>
+          </select>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 ml-auto text-xs sm:text-sm text-gray-600">
+          <span>Present: <strong className="text-green-600">{presentCount}</strong></span>
+          <span>Absent: <strong className="text-red-600">{absentCount}</strong></span>
+          <span>Not Marked: <strong className="text-gray-600">{notMarkedCount}</strong></span>
         </div>
       </div>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-          <div className="flex items-center gap-2 mb-2">
-            <Calendar className="h-5 w-5 text-blue-600" />
-            <span className="font-medium text-blue-700">Date</span>
-          </div>
-          <p className="text-lg font-bold text-blue-600">
-            {new Date(selectedDate).toLocaleDateString()}
-          </p>
-        </div>
-
-        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-          <div className="flex items-center gap-2 mb-2">
-            <CheckCircle className="h-5 w-5 text-green-600" />
-            <span className="font-medium text-green-700">Present</span>
-          </div>
-          <p className="text-2xl font-bold text-green-600">{stats.present}</p>
-        </div>
-
-        <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-          <div className="flex items-center gap-2 mb-2">
-            <XCircle className="h-5 w-5 text-red-600" />
-            <span className="font-medium text-red-700">Absent</span>
-          </div>
-          <p className="text-2xl font-bold text-red-600">{stats.absent}</p>
-        </div>
-
-        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-          <div className="flex items-center gap-2 mb-2">
-            <Users className="h-5 w-5 text-gray-600" />
-            <span className="font-medium text-gray-700">Total</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-600">{stats.total}</p>
-        </div>
-      </div>
-
-      {/* Results */}
-      {loading ? (
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="text-gray-500 mt-2">Loading attendance records...</p>
-        </div>
-      ) : attendanceRecords.length === 0 ? (
+      {students.length === 0 ? (
         <div className="text-center py-8 text-gray-500">
-          <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-          <p>No attendance records found for {new Date(selectedDate).toLocaleDateString()}</p>
-          <p className="text-sm mt-2">Try selecting a different date or mark attendance first.</p>
-        </div>
-      ) : filteredRecords.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          <Filter className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-          <p>No students match the selected filters</p>
-          <p className="text-sm mt-2">Try adjusting your filter criteria.</p>
+          <Users className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+          <p>No students found. Please add students first in the "Manage Students" section.</p>
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <Filter className="h-4 w-4" />
-            <span>
-              Showing {filteredRecords.length} of {attendanceRecords.length} students
-              {statusFilter !== 'all' && ` (${statusFilter} only)`}
-              {classFilter !== 'all' && ` from ${classFilter}`}
-            </span>
-          </div>
-
-          {Object.entries(groupedRecords).map(([className, classRecords]) => (
-            <div key={className} className="border border-gray-200 rounded-lg p-4">
-              <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <div className="h-2 w-2 bg-blue-600 rounded-full"></div>
-                {className} ({classRecords.length} students)
-              </h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {classRecords.map((record) => (
-                  <div
-                    key={record.id}
-                    className={`p-3 rounded-lg border-2 ${
-                      record.status === 'present'
-                        ? 'bg-green-50 border-green-200'
-                        : 'bg-red-50 border-red-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-gray-900">{record.student_name}</span>
+          {Object.entries(groupedRecords).length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <Users className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <p>No records match the current filters.</p>
+            </div>
+          ) : (
+            Object.entries(groupedRecords).map(([className, classRecords]) => (
+              <div key={className} className="border border-gray-200 rounded-lg p-3 sm:p-4">
+                <h3 className="font-semibold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
+                  <div className="h-2 w-2 bg-blue-600 rounded-full"></div>
+                  {className} ({classRecords.length} students)
+                </h3>
+                <div className="grid grid-cols-1 gap-3">
+                  {classRecords.map((student) => (
+                    <div key={student.register_number} className="flex flex-col xs:flex-row items-start xs:items-center justify-between p-3 bg-gray-50 rounded-lg gap-3 xs:gap-0">
+                      <div className="flex flex-col">
+                        <span className="font-medium text-gray-900">{student.name}</span>
+                        <span className="text-sm text-gray-500">Reg: {student.register_number}</span>
+                      </div>
                       <div className="flex items-center gap-2">
-                        <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                          record.status === 'present'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-red-100 text-red-700'
-                        }`}>
-                          {record.status === 'present' ? (
-                            <CheckCircle className="h-3 w-3" />
-                          ) : (
-                            <XCircle className="h-3 w-3" />
-                          )}
-                          {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
-                        </div>
-                        <button
-                          onClick={() => handleDelete(record.id)}
-                          className="ml-2 text-red-600 hover:text-red-800 text-xs font-semibold"
-                          title="Delete Attendance Record"
-                        >
-                          Delete
-                        </button>
+                        {student.status === 'present' && (
+                          <div className="flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-lg text-sm">
+                            <CheckCircle className="h-4 w-4" />
+                            Present
+                          </div>
+                        )}
+                        {student.status === 'absent' && (
+                          <div className="flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-lg text-sm">
+                            <XCircle className="h-4 w-4" />
+                            Absent
+                          </div>
+                        )}
+                        {student.status === 'not_marked' && (
+                          <div className="flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm">
+                            <span className="h-2 w-2 bg-gray-400 rounded-full"></span>
+                            Not Marked
+                          </div>
+                        )}
                       </div>
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      Recorded: {new Date(record.recorded_at).toLocaleTimeString()}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       )}
     </div>
