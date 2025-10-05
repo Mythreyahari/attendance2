@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, XCircle, Calendar, Save, Users, Eye } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AttendanceViewer } from './AttendanceViewer';
@@ -43,6 +43,32 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
   const [departments, setDepartments] = useState<string[]>([]);
   const [classes, setClasses] = useState<string[]>([]);
 
+  const loadExistingAttendance = useCallback(async () => {
+    if (students.length === 0) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('attendance')
+        .select('student_register_number, status')
+        .eq('date', selectedDate)
+        .in('student_register_number', students.map(s => s.register_number));
+
+      if (error) throw error;
+
+      const existingRecords: Record<string, 'present' | 'absent'> = {};
+      data?.forEach(record => {
+        if (record.student_register_number) {
+          existingRecords[record.student_register_number] = record.status;
+        }
+      });
+
+      setExistingAttendance(existingRecords);
+      setAttendance(existingRecords);
+    } catch (error) {
+      console.error('Error loading existing attendance:', error);
+    }
+  }, [selectedDate, students]);
+
   useEffect(() => {
     loadStudents();
   }, []);
@@ -54,7 +80,7 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
 
   useEffect(() => {
     loadExistingAttendance();
-  }, [selectedDate, students]);
+  }, [selectedDate, students, loadExistingAttendance]);
   
   useEffect(() => {
     // Extract unique departments and classes from students
@@ -84,32 +110,6 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
     }
   };
 
-  const loadExistingAttendance = async () => {
-    if (students.length === 0) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('attendance')
-        .select('student_register_number, status')
-        .eq('date', selectedDate)
-        .in('student_register_number', students.map(s => s.register_number));
-
-      if (error) throw error;
-
-      const existingRecords: Record<string, 'present' | 'absent'> = {};
-      data?.forEach(record => {
-        if (record.student_register_number) {
-          existingRecords[record.student_register_number] = record.status;
-        }
-      });
-
-      setExistingAttendance(existingRecords);
-      setAttendance(existingRecords);
-    } catch (error) {
-      console.error('Error loading existing attendance:', error);
-    }
-  };
-
   const handleAttendanceChange = (studentRegisterNumber: string, status: 'present' | 'absent') => {
     setAttendance(prev => ({
       ...prev,
@@ -134,15 +134,12 @@ export function DailyAttendance({ onAttendanceChange }: DailyAttendanceProps) {
         .eq('date', selectedDate)
         .in('student_register_number', Object.keys(attendance));
 
-      const recordsToInsert = attendanceRecords.map(record => {
-        const student = students.find(s => s.register_number === record.student_register_number);
-        return {
-          student_register_number: record.student_register_number,
-          status: record.status,
-          recorded_by: userData.user.id,
-          date: selectedDate
-        };
-      });
+      const recordsToInsert = attendanceRecords.map(record => ({
+        student_register_number: record.student_register_number,
+        status: record.status,
+        recorded_by: userData.user.id,
+        date: selectedDate
+      }));
 
       const { error } = await supabase
         .from('attendance')

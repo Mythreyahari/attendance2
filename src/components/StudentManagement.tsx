@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Users, Edit2, Trash2, Save, X } from 'lucide-react';
+import { Plus, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface Student {
@@ -38,8 +38,8 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
   const [isCustomDepartment, setIsCustomDepartment] = useState(false);
   
   // Predefined options for departments and classes
-  const predefinedDepartments = ['bsc', 'bca', 'bba', 'ba'];
-  const predefinedClasses = ['cs', 'chemistry', 'botany', 'zoology', 'tamil', 'english', 'maths'];
+  const predefinedDepartments = React.useMemo(() => ['bsc', 'bca', 'bba', 'ba'], []);
+  const predefinedClasses = React.useMemo(() => ['cs', 'chemistry', 'botany', 'zoology', 'tamil', 'english', 'maths'], []);
   
   // State for dropdown options
   const [departments, setDepartments] = useState<string[]>(predefinedDepartments);
@@ -59,7 +59,7 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
       setDepartments([...predefinedDepartments, ...uniqueDepartments.filter(dept => !predefinedDepartments.includes(dept))]);
       setClasses([...predefinedClasses, ...uniqueClasses.filter(cls => !predefinedClasses.includes(cls))]);
     }
-  }, [students]);
+  }, [students, predefinedDepartments, predefinedClasses]);
 
   const loadStudents = async () => {
     try {
@@ -129,9 +129,10 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
       setShowAddForm(false);
       loadStudents();
       onStudentsChange();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error adding student:', error);
-      alert(`Failed to add student. Please try again. Error: ${error.message || error}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      alert(`Failed to add student. Please try again. Error: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -407,7 +408,100 @@ export function StudentManagement({ onStudentsChange }: StudentManagementProps) 
         </div>
       )}
 
-      {/* The rest of the component remains the same */}
+      {/* Display students */}
+      {Object.entries(groupedStudents).map(([className, students]) => (
+        <div key={className} className="mb-6 border border-gray-200 rounded-lg p-4">
+          <h3 className="font-semibold text-gray-900 mb-4">{className}</h3>
+          <div className="space-y-4">
+            {students.map((student) => (
+              <div key={student.register_number} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <p className="font-medium">{student.name}</p>
+                  <p className="text-sm text-gray-600">Reg: {student.register_number} | Dept: {student.department}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditingStudent(student)}
+                    className="p-2 text-blue-600 hover:bg-blue-100 rounded"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => deleteStudent(student.register_number)}
+                    className="p-2 text-red-600 hover:bg-red-100 rounded"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* Edit Student Modal */}
+      {editingStudent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full">
+            <h3 className="text-lg font-semibold mb-4">Edit Student</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={editingStudent.name}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, name: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
+                <input
+                  type="text"
+                  value={editingStudent.class}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, class: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                <input
+                  type="text"
+                  value={editingStudent.department}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, department: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                <select
+                  value={editingStudent.year}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, year: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                >
+                  <option value="year1">Year 1</option>
+                  <option value="year2">Year 2</option>
+                  <option value="year3">Year 3</option>
+                </select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setEditingStudent(null)}
+                  className="px-4 py-2 text-sm bg-gray-200 rounded-lg hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={updateStudent}
+                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

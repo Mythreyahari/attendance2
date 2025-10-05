@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Calendar, Users, CheckCircle, XCircle, Eye, Filter } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -33,38 +33,9 @@ export function AttendanceViewer({ onBack, onAttendanceChange }: AttendanceViewe
     loadStudents();
   }, []);
 
-  useEffect(() => {
-    // Load attendance records when students data is available and selectedDate changes
-    if (students.length > 0) {
-      loadAttendanceRecords();
-    }
-  }, [students, selectedDate]);
-
-  useEffect(() => {
-    applyFilters();
-  }, [attendanceRecords, statusFilter, classFilter]);
-
-  const loadStudents = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('register_number, class, name');
-
-      if (error) {
-        console.error('Error loading students:', error);
-        return;
-      }
-
-      setStudents(data || []);
-    } catch (error) {
-      console.error('Error loading students:', error);
-    }
-  };
-
-  const loadAttendanceRecords = async () => {
+  const loadAttendanceRecords = useCallback(async () => {
     setLoading(true);
     try {
-      console.log('Loading attendance records for date:', selectedDate);
       const { data, error } = await supabase
         .from('attendance')
         .select('*')
@@ -77,9 +48,6 @@ export function AttendanceViewer({ onBack, onAttendanceChange }: AttendanceViewe
       }
 
       const records = data || [];
-
-      console.log('Students:', students);
-      console.log('Attendance records:', records);
 
       // Merge attendance records with student class info
       const mergedRecords = records.map(record => {
@@ -101,22 +69,50 @@ export function AttendanceViewer({ onBack, onAttendanceChange }: AttendanceViewe
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedDate, students]);
 
-  const applyFilters = () => {
-    let filtered = attendanceRecords;
-
-    // Filter by status
+  const applyFilters = useCallback(() => {
+    let filtered = [...attendanceRecords];
+    
+    // Apply status filter
     if (statusFilter !== 'all') {
       filtered = filtered.filter(record => record.status === statusFilter);
     }
-
-    // Filter by class
+    
+    // Apply class filter
     if (classFilter !== 'all') {
       filtered = filtered.filter(record => record.student_class === classFilter);
     }
-
+    
     setFilteredRecords(filtered);
+  }, [attendanceRecords, statusFilter, classFilter]);
+
+  useEffect(() => {
+    // Load attendance records when students data is available and selectedDate changes
+    if (students.length > 0) {
+      loadAttendanceRecords();
+    }
+  }, [students.length, selectedDate, loadAttendanceRecords]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [attendanceRecords, statusFilter, classFilter, applyFilters]);
+
+  const loadStudents = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('register_number, class, name');
+
+      if (error) {
+        console.error('Error loading students:', error);
+        return;
+      }
+
+      setStudents(data || []);
+    } catch (error) {
+      console.error('Error loading students:', error);
+    }
   };
 
   const handleDelete = async (attendanceId: string) => {
